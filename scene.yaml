@@ -74,6 +74,7 @@ layers:
                 filter: { $zoom: { min: 15 } }
                 draw:
                     polygons:
+                        order: global.feature_order
                         color: '#999999'
                         style: red-wall
                         extrude: function () { return feature.height > 0 || $zoom >= 16; }
