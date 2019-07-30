@@ -1,0 +1,128 @@
+# Author: Geraldine Sarmiento
+global:
+    # colors
+    white_color:                  [1.00,1.00,1.00]
+
+    # Sign up for a Mapzen API key to enjoy higher rate limits
+    # https://mapzen.com/documentation/overview/#developer-accounts-and-api-keys
+    sdk_api_key: '3eqm2_bfTNGZ85ar20fVyA'     # set this value to your Mapzen API key
+
+    # default order for basemap features
+    feature_order: function() { return feature.sort_rank || 0;; }
+    feature_order_down_1: function() { return feature.sort_rank - 1; }
+
+sources:
+    mapzen:
+        type: MVT
+        url: https://tile.nextzen.org/tilezen/vector/v1/512/all/{z}/{x}/{y}.mvt
+        url_params:
+            api_key: global.sdk_api_key
+        tile_size: 512
+        rasters: [normals-elevation]
+        max_zoom: 16
+    normals-elevation:
+        type: Raster
+        url: https://tile.nextzen.org/tilezen/terrain/v1/512/normal/{z}/{x}/{y}.png
+        url_params:
+            api_key: global.sdk_api_key
+        tile_size: 512
+        max_zoom: 15
+
+cameras:
+    cam:
+        type: perspective
+
+scene:
+    background:
+        color: global.white_color
+
+layers:
+    earth:
+        data: { source: mapzen }
+        draw:
+            polygons:
+                style: terrain
+                color: global.white_color
+                order: global.feature_order
+
+    water:
+        data: { source: mapzen, layer: water }
+        draw:
+            polygons:
+                color: [0.455,0.839,0.990]
+                order: global.feature_order
+
+        river:
+            draw:
+                lines:
+                    order: global.feature_order_down_1
+                    color: [0.455,0.839,0.990]
+                    width: [[11, 2px], [18, 10px]]
+            intermittent:
+                draw:
+                    lines:
+                        color: [0.455,0.839,0.990]
+
+    buildings:
+        data: { source: mapzen, layer: buildings }
+        all-buildings:
+            draw:
+                lines:
+                    order: global.feature_order
+                    width: 0px
+            extruded:
+                filter: { $zoom: { min: 15 } }
+                draw:
+                    polygons:
+                        color: '#999999'
+                        style: red-wall
+                        extrude: function () { return feature.height > 0 || $zoom >= 16; }
+
+
+
+styles:
+    red-wall:
+        base: polygons
+        material:
+            emission: [0.753,0.071,0.120]
+            ambient: 1.25
+            diffuse:
+                texture: images/sem.jpg
+                mapping: spheremap
+            specular: pink
+            shininess: 2.0
+
+    terrain:
+        base: polygons
+        lighting: false
+        raster: normal
+        shaders:
+            uniforms:
+                u_envmap: images/glitch.jpg
+                u_contrast: 1.
+                u_zoom_scale: 3.5
+                u_brightness_base: 0.5
+                u_brightness_scaler: 0.5
+            blocks:
+                global: |
+                    // Simplified view-independent environment map
+                    vec4 applyEnvmap (in sampler2D _tex, in vec3 _normal, in float scale) {
+                        _normal.z *= scale;
+                        return texture2D(_tex, .5*(normalize(_normal).xy + 1.));
+                    }
+                color: |
+                    // turn terrain exaggeration up/down
+                    // fade out spheremap normals with a function
+                    float scale1 = 20./(u_map_position.z + 1.0) + 1.5;
+                    float m = u_zoom_scale * (u_map_position.z + 0.4) * exp(u_map_position.z * -.29);
+                    m = clamp(m, 0., 1.5);
+                    color = applyEnvmap(u_envmap, normal, 1./scale1);
+
+                    // apply contrast and brightness
+                    //float contrast = m;
+                    //color.rgb = ((color.rgb - 0.5) * max(contrast, 0.)) + 0.5;
+                    //float brightness = u_brightness_base - m * u_brightness_scaler;
+                    //color.rgb += brightness;
+
+                    // apply layer color
+                    color *= v_color;
